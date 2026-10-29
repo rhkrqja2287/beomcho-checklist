@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>생필품 체크리스트</title>
+<meta name="theme-color" content="#f6f5f1" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#151716" media="(prefers-color-scheme: dark)">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="생필품">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.png">
+<link rel="apple-touch-icon" href="icon.png">
+<style>
+:root{--bg:#f6f5f1;--card:#fff;--text:#1f2328;--sub:#6b7280;--line:#e5e2da;--accent:#2f7d5b;--accent-soft:#e3f1ea;--danger:#c0392b;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#151716;--card:#1f2221;--text:#e8eae9;--sub:#9aa3a0;--line:#2f3432;--accent:#5cbf93;--accent-soft:#1d3329;--danger:#e57366;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#151716;--card:#1f2221;--text:#e8eae9;--sub:#9aa3a0;--line:#2f3432;--accent:#5cbf93;--accent-soft:#1d3329;--danger:#e57366;color-scheme:dark}
+*{box-sizing:border-box}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR","Malgun Gothic",sans-serif;line-height:1.5}
+body.dragging{user-select:none;-webkit-user-select:none}
+.wrap{max-width:1000px;margin:0 auto;padding:20px 16px 48px}
+header{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:16px}
+h1{font-size:1.5rem;margin:0}
+.sub{color:var(--sub);font-size:.9rem}
+.bar{height:8px;background:var(--line);border-radius:99px;overflow:hidden;margin:10px 0 14px}
+.bar>i{display:block;height:100%;width:0;background:var(--accent);transition:width .25s}
+.tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+button{font:inherit;cursor:pointer;border:1px solid var(--line);background:var(--card);color:var(--text);border-radius:10px;padding:8px 12px;min-height:40px}
+button:hover{border-color:var(--accent)}
+button.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+.grid{display:grid;grid-template-columns:1fr;gap:14px;margin-top:16px}
+@media (min-width:640px){.grid{grid-template-columns:repeat(2,1fr)}}
+@media (min-width:960px){.grid{grid-template-columns:repeat(3,1fr)}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;align-self:start}
+.card h2{font-size:1.05rem;margin:0 0 8px;display:flex;gap:6px;justify-content:space-between;align-items:center}
+.card h2 b{flex:1}
+.card h2 span{font-size:.8rem;color:var(--sub);font-weight:400}
+ul{list-style:none;margin:0;padding:0}
+ul.edit{min-height:40px}
+li{display:flex;align-items:center;gap:10px;padding:8px 2px;border-top:1px solid var(--line)}
+li:first-child{border-top:0}
+li input[type=checkbox]{width:22px;height:22px;accent-color:var(--accent);flex:none}
+li label{flex:1;cursor:pointer;word-break:keep-all}
+li.done label{color:var(--sub);text-decoration:line-through}
+li.dragging{background:var(--accent-soft);border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,.2)}
+.x{border:0;background:none;color:var(--sub);padding:4px 8px;min-height:32px}
+.x:hover{color:var(--danger)}
+.grip{cursor:grab;touch-action:none;color:var(--sub);padding:6px 6px;font-size:1.1rem;line-height:1;flex:none;user-select:none;-webkit-user-select:none}
+.ed,.add input{flex:1;min-width:0;font:inherit;padding:8px 10px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--text)}
+.add{display:flex;gap:6px;margin-top:10px}
+.empty{color:var(--sub);font-size:.9rem;padding:8px 2px}
+.newcat{margin:0 0 4px}
+.edonly{display:none}
+.editing .edonly{display:flex}
+.editing .viewonly{display:none}
+@media (max-width:639px){
+body{font-size:14px;line-height:1.35}
+.wrap{padding:12px 10px 32px}
+header{gap:8px;margin-bottom:6px}
+h1{font-size:1.2rem}
+.sub{font-size:.78rem}
+.bar{height:6px;margin:6px 0 8px}
+button{font-size:.82rem;padding:5px 9px;min-height:32px;border-radius:8px}
+.tools{gap:6px}
+.grid{gap:8px;margin-top:8px}
+.card{padding:8px 12px;border-radius:12px}
+.card h2{font-size:.95rem;margin-bottom:2px}
+.card h2 span{font-size:.75rem}
+li{padding:5px 2px;gap:8px}
+li input[type=checkbox]{width:18px;height:18px}
+.x{min-height:28px;padding:2px 6px}
+.grip{padding:4px 4px}
+.ed,.add input{font-size:16px;padding:6px 8px;border-radius:8px}
+.add{margin-top:6px}
+.empty{font-size:.8rem;padding:4px 2px}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>🛒 생필품 체크리스트</h1>
+      <div class="sub" id="count"></div>
+    </div>
+    <div class="tools">
+      <button id="edit">✏️ 수정</button>
+      <button id="filter" class="viewonly">남은 것만 보기</button>
+      <button id="reset" class="viewonly">체크 모두 해제</button>
+      <button id="theme">🌓</button>
+    </div>
+  </header>
+  <div class="bar"><i id="fill"></i></div>
+  <div class="add newcat edonly"><input id="catname" placeholder="새 카테고리 이름 (예: 🧂 조미료)" aria-label="새 카테고리 이름"><button id="catadd">카테고리 추가</button></div>
+  <div class="grid" id="grid"></div>
+</div>
+<script>
+const DEFAULT=[
+["🍳 주방",["키친타월","지퍼백","랩·호일","주방세제","수세미","음식물 쓰레기봉투","종량제 봉투"]],
+["🚿 욕실",["샴푸·린스","바디워시","치약","칫솔","화장지","핸드워시","면도기"]],
+["🧺 세탁·청소",["세탁세제","섬유유연제","물티슈","청소 스프레이","고무장갑","곰팡이 제거제"]],
+["🍚 식료품",["쌀","계란","우유","식용유","소금·설탕","라면"]],
+["🔧 기타",["건전지","마스크","상비약","전구"]]
+];
+const KEY="supplies-checklist-v1";
+let state,onlyLeft=false,editing=false,focusCat=null;
+function load(){try{const s=localStorage.getItem(KEY);if(s)return JSON.parse(s)}catch(e){}
+return DEFAULT.map(([n,a])=>({n,items:a.map(t=>({t,d:false}))}))}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(state))}catch(e){}}
+state=load();
+const $=id=>document.getElementById(id);
+
+function startDrag(e){
+  e.preventDefault();
+  const li=e.currentTarget.parentNode;
+  li.classList.add("dragging");document.body.classList.add("dragging");
+  const move=ev=>{
+    const y=ev.clientY;
+    if(y<60)scrollBy(0,-12);else if(y>innerHeight-60)scrollBy(0,12);
+    const el=document.elementFromPoint(ev.clientX,y);
+    if(!el)return;
+    const other=el.closest("li");
+    if(other&&other!==li&&other.parentNode.classList.contains("edit")){
+      const r=other.getBoundingClientRect();
+      other.parentNode.insertBefore(li,y<r.top+r.height/2?other:other.nextSibling);
+      return;
+    }
+    const card=el.closest(".card");
+    if(!card)return;
+    const ul=card.querySelector("ul.edit");if(!ul)return;
+    const r=ul.getBoundingClientRect();
+    if(!ul.querySelector("li"))ul.append(li);
+    else if(y<r.top)ul.prepend(li);
+    else if(y>r.bottom)ul.append(li);
+  };
+  const end=()=>{
+    removeEventListener("pointermove",move);removeEventListener("pointerup",end);removeEventListener("pointercancel",end);
+    li.classList.remove("dragging");document.body.classList.remove("dragging");
+    document.querySelectorAll(".card").forEach(card=>{
+      const ul=card.querySelector("ul.edit");
+      if(ul)state[+card.dataset.ci].items=[...ul.children].map(l=>l._item);
+    });
+    save();render();
+  };
+  addEventListener("pointermove",move);addEventListener("pointerup",end);addEventListener("pointercancel",end);
+}
+
+function render(){
+  document.body.classList.toggle("editing",editing);
+  const g=$("grid");g.innerHTML="";
+  let total=0,done=0;
+  state.forEach((c,ci)=>{
+    total+=c.items.length;done+=c.items.filter(i=>i.d).length;
+    const card=document.createElement("div");card.className="card";card.dataset.ci=ci;
+    const h=document.createElement("h2");
+    if(editing){
+      const ni=document.createElement("input");ni.className="ed";ni.value=c.n;ni.setAttribute("aria-label","카테고리 이름");
+      ni.onchange=()=>{const v=ni.value.trim();if(v){c.n=v;save()}else ni.value=c.n};
+      ni.onkeydown=e=>{if(e.key==="Enter")ni.blur()};
+      const dx=document.createElement("button");dx.className="x";dx.textContent="🗑";dx.title="카테고리 삭제";dx.setAttribute("aria-label","카테고리 삭제");
+      dx.onclick=()=>{
+        if(!dx.dataset.arm){dx.dataset.arm="1";dx.textContent="삭제?";dx.style.color="var(--danger)";setTimeout(()=>{delete dx.dataset.arm;dx.textContent="🗑";dx.style.color=""},3000)}
+        else{state.splice(ci,1);save();render()}
+      };
+      h.append(ni,dx);
+    }else{
+      const nm=document.createElement("b");nm.textContent=c.n;
+      const sp=document.createElement("span");sp.textContent=`${c.items.filter(i=>i.d).length}/${c.items.length}`;
+      h.append(nm,sp);
+    }
+    card.append(h);
+    const ul=document.createElement("ul");if(editing)ul.className="edit";
+    let shown=0;
+    c.items.forEach((it,ii)=>{
+      if(!editing&&onlyLeft&&it.d)return;shown++;
+      const li=document.createElement("li");li._item=it;
+      if(editing){
+        const gr=document.createElement("span");gr.className="grip";gr.textContent="⠿";gr.title="끌어서 순서 변경";
+        gr.addEventListener("pointerdown",startDrag);
+        const inp=document.createElement("input");inp.className="ed";inp.value=it.t;inp.setAttribute("aria-label","항목 이름");
+        inp.onchange=()=>{const v=inp.value.trim();if(v){it.t=v;save()}else inp.value=it.t};
+        inp.onkeydown=e=>{if(e.key==="Enter")inp.blur()};
+        const x=document.createElement("button");x.className="x";x.textContent="✕";x.title="삭제";x.setAttribute("aria-label","삭제");
+        x.onclick=()=>{c.items.splice(c.items.indexOf(it),1);save();render()};
+        li.append(gr,inp,x);
+      }else{
+        if(it.d)li.className="done";
+        const id=`i${ci}_${ii}`;
+        const cb=document.createElement("input");cb.type="checkbox";cb.id=id;cb.checked=it.d;
+        cb.onchange=()=>{it.d=cb.checked;save();render()};
+        const lb=document.createElement("label");lb.htmlFor=id;lb.textContent=it.t;
+        li.append(cb,lb);
+      }
+      ul.append(li);
+    });
+    card.append(ul);
+    if(!editing&&!shown){const p=document.createElement("div");p.className="empty";p.textContent=onlyLeft?"다 챙겼어요 👍":"품목이 없습니다";card.append(p)}
+    if(editing){
+      const f=document.createElement("div");f.className="add";
+      f.innerHTML=`<input placeholder="품목 추가" aria-label="품목 추가"><button>추가</button>`;
+      const inp=f.querySelector("input");
+      const add=()=>{const v=inp.value.trim();if(!v)return;c.items.push({t:v,d:false});save();focusCat=ci;render()};
+      f.querySelector("button").onclick=add;
+      inp.onkeydown=e=>{if(e.key==="Enter")add()};
+      card.append(f);
+    }
+    g.append(card);
+  });
+  $("count").textContent=`${done} / ${total} 챙김 · 남은 품목 ${total-done}개`;
+  $("fill").style.width=(total?done/total*100:0)+"%";
+  $("filter").classList.toggle("on",onlyLeft);
+  $("edit").classList.toggle("on",editing);
+  $("edit").textContent=editing?"✓ 수정 완료":"✏️ 수정";
+  if(focusCat!==null){
+    const inp=g.querySelector(`.card[data-ci="${focusCat}"] .add input`);
+    if(inp)inp.focus();
+    focusCat=null;
+  }
+}
+$("edit").onclick=()=>{editing=!editing;render()};
+$("filter").onclick=()=>{onlyLeft=!onlyLeft;render()};
+$("reset").onclick=()=>{state.forEach(c=>c.items.forEach(i=>i.d=false));save();render()};
+$("theme").onclick=()=>{const r=document.documentElement;const dark=r.dataset.theme?r.dataset.theme==="dark":matchMedia("(prefers-color-scheme:dark)").matches;r.dataset.theme=dark?"light":"dark"};
+const addCat=()=>{const v=$("catname").value.trim();if(!v)return;state.push({n:v,items:[]});$("catname").value="";save();focusCat=state.length-1;render()};
+$("catadd").onclick=addCat;
+$("catname").onkeydown=e=>{if(e.key==="Enter")addCat()};
+render();
+</script>
+</body>
+</html>
