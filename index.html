@@ -13,6 +13,8 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.png">
 <link rel="apple-touch-icon" href="icon.png">
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <style>
 :root{--bg:#f6f5f1;--card:#fff;--text:#1f2328;--sub:#6b7280;--line:#e5e2da;--accent:#2f7d5b;--accent-soft:#e3f1ea;--danger:#c0392b;
 box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -85,7 +87,7 @@ li input[type=checkbox]{width:18px;height:18px}
   <header>
     <div>
       <h1>🛒 생필품 체크리스트</h1>
-      <div class="sub" id="count"></div>
+      <div class="sub"><span id="count"></span> · <span id="sync"></span></div>
     </div>
     <div class="tools">
       <button id="edit">✏️ 수정</button>
@@ -106,18 +108,72 @@ const DEFAULT=[
 ["🍚 식료품",["쌀","계란","우유","식용유","소금·설탕","라면"]],
 ["🔧 기타",["건전지","마스크","상비약","전구"]]
 ];
-const KEY="supplies-checklist-v1";
-let state,onlyLeft=false,editing=false,focusCat=null;
-function load(){try{const s=localStorage.getItem(KEY);if(s)return JSON.parse(s)}catch(e){}
-return DEFAULT.map(([n,a])=>({n,items:a.map(t=>({t,d:false}))}))}
-function save(){try{localStorage.setItem(KEY,JSON.stringify(state))}catch(e){}}
-state=load();
+const firebaseConfig={
+  apiKey:"AIzaSyBM4Rd5Sqr1eATSbny_fibk3A1XEVL2wEI",
+  authDomain:"beomcho-checklist.firebaseapp.com",
+  databaseURL:"https://beomcho-checklist-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId:"beomcho-checklist",
+  storageBucket:"beomcho-checklist.firebasestorage.app",
+  messagingSenderId:"327194969353",
+  appId:"1:327194969353:web:ae2123962d2b160255bfd8"
+};
+const KEY="supplies-checklist-v2",OLD="supplies-checklist-v1";
+let state,onlyLeft=false,editing=false,focusCat=null,dragging=false,pending=null,root=null,online=false;
 const $=id=>document.getElementById(id);
+const nid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
 
+function seedState(){
+  try{const s=localStorage.getItem(OLD);if(s)return JSON.parse(s).map((c,ci)=>({id:"c"+ci,n:c.n,items:c.items.map((it,ii)=>({id:`c${ci}i${ii}`,t:it.t,d:!!it.d}))}))}catch(e){}
+  return DEFAULT.map(([n,a],ci)=>({id:"c"+ci,n,items:a.map((t,ii)=>({id:`c${ci}i${ii}`,t,d:false}))}));
+}
+function load(){try{const s=localStorage.getItem(KEY);if(s)return JSON.parse(s)}catch(e){}return null}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(state))}catch(e){}}
+state=load()||seedState();
+
+/* ---- Firebase 동기화 ---- */
+const W=(p,v)=>{try{if(root)root.child(p).set(v)}catch(e){console.error(e)}};
+const R=p=>W(p,null);
+function parse(v){
+  const by=(a,b)=>(a.o-b.o)||(a.id<b.id?-1:1);
+  return Object.entries((v&&v.cats)||{}).filter(([,c])=>c&&c.n).map(([id,c])=>({id,n:c.n,o:c.o||0,
+    items:Object.entries(c.items||{}).filter(([,i])=>i&&i.t).map(([iid,i])=>({id:iid,t:i.t,d:!!i.d,o:i.o||0})).sort(by)}))
+    .sort(by).map(c=>({id:c.id,n:c.n,items:c.items.map(({id,t,d})=>({id,t,d}))}));
+}
+function buildSeed(st){
+  const cats={};
+  st.forEach((c,ci)=>{const items={};c.items.forEach((it,ii)=>{items[it.id]={t:it.t,d:it.d,o:ii}});cats[c.id]={n:c.n,o:ci,items}});
+  return {meta:{seeded:true},cats};
+}
+function busy(){
+  if(dragging)return true;
+  const a=document.activeElement;
+  return !!a&&a.tagName==="INPUT"&&(a.classList.contains("ed")||Boolean(a.closest(".add")&&a.value));
+}
+function flush(){if(!pending||busy())return;state=pending;pending=null;save();render()}
+function onRemote(snap){
+  const v=snap.val();
+  if(!v){root.set(buildSeed(state));return}
+  const next=parse(v);
+  if(JSON.stringify(next)===JSON.stringify(state)){pending=null;return}
+  pending=next;flush();
+}
+document.addEventListener("focusout",()=>setTimeout(flush,60));
+try{
+  if(window.firebase){
+    firebase.initializeApp(firebaseConfig);
+    const db=firebase.database();root=db.ref("checklist");
+    db.ref(".info/connected").on("value",s=>{online=!!s.val();updateStatus()});
+    root.on("value",onRemote,err=>{console.error(err);root=null;updateStatus()});
+  }
+}catch(e){console.error(e);root=null}
+function updateStatus(){$("sync").textContent=!root?"⚠ 동기화 꺼짐":online?"☁ 동기화됨":"⚠ 오프라인 · 연결되면 자동 동기화"}
+
+/* ---- 드래그 ---- */
 function startDrag(e){
   e.preventDefault();
   const li=e.currentTarget.parentNode;
-  li.classList.add("dragging");document.body.classList.add("dragging");
+  const origin={};state.forEach(c=>c.items.forEach(it=>origin[it.id]=c.id));
+  dragging=true;li.classList.add("dragging");document.body.classList.add("dragging");
   const move=ev=>{
     const y=ev.clientY;
     if(y<60)scrollBy(0,-12);else if(y>innerHeight-60)scrollBy(0,12);
@@ -140,15 +196,23 @@ function startDrag(e){
   const end=()=>{
     removeEventListener("pointermove",move);removeEventListener("pointerup",end);removeEventListener("pointercancel",end);
     li.classList.remove("dragging");document.body.classList.remove("dragging");
+    const upd={};
     document.querySelectorAll(".card").forEach(card=>{
-      const ul=card.querySelector("ul.edit");
-      if(ul)state[+card.dataset.ci].items=[...ul.children].map(l=>l._item);
+      const ul=card.querySelector("ul.edit");if(!ul)return;
+      const c=state[+card.dataset.ci];
+      c.items=[...ul.children].map(l=>l._item);
+      c.items.forEach((it,i)=>{
+        upd[`cats/${c.id}/items/${it.id}`]={t:it.t,d:it.d,o:i};
+        if(origin[it.id]!==c.id)upd[`cats/${origin[it.id]}/items/${it.id}`]=null;
+      });
     });
-    save();render();
+    dragging=false;pending=null;save();render();
+    try{if(root)root.update(upd)}catch(err){console.error(err)}
   };
   addEventListener("pointermove",move);addEventListener("pointerup",end);addEventListener("pointercancel",end);
 }
 
+/* ---- 화면 ---- */
 function render(){
   document.body.classList.toggle("editing",editing);
   const g=$("grid");g.innerHTML="";
@@ -159,12 +223,12 @@ function render(){
     const h=document.createElement("h2");
     if(editing){
       const ni=document.createElement("input");ni.className="ed";ni.value=c.n;ni.setAttribute("aria-label","카테고리 이름");
-      ni.onchange=()=>{const v=ni.value.trim();if(v){c.n=v;save()}else ni.value=c.n};
+      ni.onchange=()=>{const v=ni.value.trim();if(v){c.n=v;save();W(`cats/${c.id}/n`,v)}else ni.value=c.n};
       ni.onkeydown=e=>{if(e.key==="Enter")ni.blur()};
       const dx=document.createElement("button");dx.className="x";dx.textContent="🗑";dx.title="카테고리 삭제";dx.setAttribute("aria-label","카테고리 삭제");
       dx.onclick=()=>{
         if(!dx.dataset.arm){dx.dataset.arm="1";dx.textContent="삭제?";dx.style.color="var(--danger)";setTimeout(()=>{delete dx.dataset.arm;dx.textContent="🗑";dx.style.color=""},3000)}
-        else{state.splice(ci,1);save();render()}
+        else{state.splice(ci,1);save();render();R(`cats/${c.id}`)}
       };
       h.append(ni,dx);
     }else{
@@ -182,16 +246,16 @@ function render(){
         const gr=document.createElement("span");gr.className="grip";gr.textContent="⠿";gr.title="끌어서 순서 변경";
         gr.addEventListener("pointerdown",startDrag);
         const inp=document.createElement("input");inp.className="ed";inp.value=it.t;inp.setAttribute("aria-label","항목 이름");
-        inp.onchange=()=>{const v=inp.value.trim();if(v){it.t=v;save()}else inp.value=it.t};
+        inp.onchange=()=>{const v=inp.value.trim();if(v){it.t=v;save();W(`cats/${c.id}/items/${it.id}/t`,v)}else inp.value=it.t};
         inp.onkeydown=e=>{if(e.key==="Enter")inp.blur()};
         const x=document.createElement("button");x.className="x";x.textContent="✕";x.title="삭제";x.setAttribute("aria-label","삭제");
-        x.onclick=()=>{c.items.splice(c.items.indexOf(it),1);save();render()};
+        x.onclick=()=>{c.items.splice(c.items.indexOf(it),1);save();render();R(`cats/${c.id}/items/${it.id}`)};
         li.append(gr,inp,x);
       }else{
         if(it.d)li.className="done";
         const id=`i${ci}_${ii}`;
         const cb=document.createElement("input");cb.type="checkbox";cb.id=id;cb.checked=it.d;
-        cb.onchange=()=>{it.d=cb.checked;save();render()};
+        cb.onchange=()=>{it.d=cb.checked;save();render();W(`cats/${c.id}/items/${it.id}/d`,it.d)};
         const lb=document.createElement("label");lb.htmlFor=id;lb.textContent=it.t;
         li.append(cb,lb);
       }
@@ -203,7 +267,11 @@ function render(){
       const f=document.createElement("div");f.className="add";
       f.innerHTML=`<input placeholder="품목 추가" aria-label="품목 추가"><button>추가</button>`;
       const inp=f.querySelector("input");
-      const add=()=>{const v=inp.value.trim();if(!v)return;c.items.push({t:v,d:false});save();focusCat=ci;render()};
+      const add=()=>{
+        const v=inp.value.trim();if(!v)return;inp.value="";
+        const it={id:nid(),t:v,d:false};c.items.push(it);save();focusCat=ci;render();
+        W(`cats/${c.id}/items/${it.id}`,{t:v,d:false,o:Date.now()});
+      };
       f.querySelector("button").onclick=add;
       inp.onkeydown=e=>{if(e.key==="Enter")add()};
       card.append(f);
@@ -211,6 +279,7 @@ function render(){
     g.append(card);
   });
   $("count").textContent=`${done} / ${total} 챙김 · 남은 품목 ${total-done}개`;
+  updateStatus();
   $("fill").style.width=(total?done/total*100:0)+"%";
   $("filter").classList.toggle("on",onlyLeft);
   $("edit").classList.toggle("on",editing);
@@ -223,9 +292,18 @@ function render(){
 }
 $("edit").onclick=()=>{editing=!editing;render()};
 $("filter").onclick=()=>{onlyLeft=!onlyLeft;render()};
-$("reset").onclick=()=>{state.forEach(c=>c.items.forEach(i=>i.d=false));save();render()};
+$("reset").onclick=()=>{
+  const u={};
+  state.forEach(c=>c.items.forEach(i=>{if(i.d){i.d=false;u[`cats/${c.id}/items/${i.id}/d`]=false}}));
+  save();render();
+  try{if(root&&Object.keys(u).length)root.update(u)}catch(e){console.error(e)}
+};
 $("theme").onclick=()=>{const r=document.documentElement;const dark=r.dataset.theme?r.dataset.theme==="dark":matchMedia("(prefers-color-scheme:dark)").matches;r.dataset.theme=dark?"light":"dark"};
-const addCat=()=>{const v=$("catname").value.trim();if(!v)return;state.push({n:v,items:[]});$("catname").value="";save();focusCat=state.length-1;render()};
+const addCat=()=>{
+  const v=$("catname").value.trim();if(!v)return;
+  const c={id:nid(),n:v,items:[]};state.push(c);$("catname").value="";save();focusCat=state.length-1;render();
+  W(`cats/${c.id}`,{n:v,o:Date.now()});
+};
 $("catadd").onclick=addCat;
 $("catname").onkeydown=e=>{if(e.key==="Enter")addCat()};
 render();
