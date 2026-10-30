@@ -56,6 +56,10 @@ li.dragging{background:var(--accent-soft);border-radius:8px;box-shadow:0 4px 14p
 .add{display:flex;gap:6px;margin-top:10px}
 .empty{color:var(--sub);font-size:.9rem;padding:8px 2px}
 .newcat{margin:0 0 4px}
+.pr{width:96px;flex:none;text-align:right;font:inherit;padding:6px 8px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--text)}
+.budget{display:flex;flex-wrap:wrap;gap:2px 12px;align-items:baseline;justify-content:space-between;background:var(--accent-soft);border:1px solid var(--accent);border-radius:12px;padding:10px 14px;margin:0 0 10px}
+.budget b{font-size:1.2rem;color:var(--accent)}
+.budget[hidden]{display:none}
 .edonly{display:none}
 .editing .edonly{display:flex}
 .editing .viewonly{display:none}
@@ -79,6 +83,9 @@ li input[type=checkbox]{width:18px;height:18px}
 .ed,.add input{font-size:16px;padding:6px 8px;border-radius:8px}
 .add{margin-top:6px}
 .empty{font-size:.8rem;padding:4px 2px}
+.pr{width:84px;font-size:16px;padding:5px 7px}
+.budget{padding:8px 12px;margin-bottom:8px}
+.budget b{font-size:1.1rem}
 }
 </style>
 </head>
@@ -91,12 +98,14 @@ li input[type=checkbox]{width:18px;height:18px}
     </div>
     <div class="tools">
       <button id="edit">✏️ 수정</button>
-      <button id="filter" class="viewonly">남은 것만 보기</button>
-      <button id="reset" class="viewonly">체크 모두 해제</button>
+      <button id="filter" class="viewonly">필요 항목</button>
+      <button id="checkall" class="viewonly">모두 체크</button>
+      <button id="reset" class="viewonly">모두 해제</button>
       <button id="theme">🌓</button>
     </div>
   </header>
   <div class="bar"><i id="fill"></i></div>
+  <div class="budget viewonly" id="budget" hidden><span>💰 필요 예산 <b id="bsum">0원</b></span><span class="sub" id="bnote"></span></div>
   <div class="add newcat edonly"><input id="catname" placeholder="새 카테고리 이름 (예: 🧂 조미료)" aria-label="새 카테고리 이름"><button id="catadd">카테고리 추가</button></div>
   <div class="grid" id="grid"></div>
 </div>
@@ -123,8 +132,8 @@ const $=id=>document.getElementById(id);
 const nid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
 
 function seedState(){
-  try{const s=localStorage.getItem(OLD);if(s)return JSON.parse(s).map((c,ci)=>({id:"c"+ci,n:c.n,items:c.items.map((it,ii)=>({id:`c${ci}i${ii}`,t:it.t,d:!!it.d}))}))}catch(e){}
-  return DEFAULT.map(([n,a],ci)=>({id:"c"+ci,n,items:a.map((t,ii)=>({id:`c${ci}i${ii}`,t,d:false}))}));
+  try{const s=localStorage.getItem(OLD);if(s)return JSON.parse(s).map((c,ci)=>({id:"c"+ci,n:c.n,items:c.items.map((it,ii)=>({id:`c${ci}i${ii}`,t:it.t,d:!!it.d,p:Number(it.p)||0}))}))}catch(e){}
+  return DEFAULT.map(([n,a],ci)=>({id:"c"+ci,n,items:a.map((t,ii)=>({id:`c${ci}i${ii}`,t,d:false,p:0}))}));
 }
 function load(){try{const s=localStorage.getItem(KEY);if(s)return JSON.parse(s)}catch(e){}return null}
 function save(){try{localStorage.setItem(KEY,JSON.stringify(state))}catch(e){}}
@@ -136,18 +145,18 @@ const R=p=>W(p,null);
 function parse(v){
   const by=(a,b)=>(a.o-b.o)||(a.id<b.id?-1:1);
   return Object.entries((v&&v.cats)||{}).filter(([,c])=>c&&c.n).map(([id,c])=>({id,n:c.n,o:c.o||0,
-    items:Object.entries(c.items||{}).filter(([,i])=>i&&i.t).map(([iid,i])=>({id:iid,t:i.t,d:!!i.d,o:i.o||0})).sort(by)}))
-    .sort(by).map(c=>({id:c.id,n:c.n,items:c.items.map(({id,t,d})=>({id,t,d}))}));
+    items:Object.entries(c.items||{}).filter(([,i])=>i&&i.t).map(([iid,i])=>({id:iid,t:i.t,d:!!i.d,p:Number(i.p)||0,o:i.o||0})).sort(by)}))
+    .sort(by).map(c=>({id:c.id,n:c.n,items:c.items.map(({id,t,d,p})=>({id,t,d,p}))}));
 }
 function buildSeed(st){
   const cats={};
-  st.forEach((c,ci)=>{const items={};c.items.forEach((it,ii)=>{items[it.id]={t:it.t,d:it.d,o:ii}});cats[c.id]={n:c.n,o:ci,items}});
+  st.forEach((c,ci)=>{const items={};c.items.forEach((it,ii)=>{items[it.id]={t:it.t,d:it.d,o:ii,...(it.p?{p:it.p}:{})}});cats[c.id]={n:c.n,o:ci,items}});
   return {meta:{seeded:true},cats};
 }
 function busy(){
   if(dragging)return true;
   const a=document.activeElement;
-  return !!a&&a.tagName==="INPUT"&&(a.classList.contains("ed")||Boolean(a.closest(".add")&&a.value));
+  return !!a&&a.tagName==="INPUT"&&(a.classList.contains("ed")||a.classList.contains("pr")||Boolean(a.closest(".add")&&a.value));
 }
 function flush(){if(!pending||busy())return;state=pending;pending=null;save();render()}
 function onRemote(snap){
@@ -202,7 +211,7 @@ function startDrag(e){
       const c=state[+card.dataset.ci];
       c.items=[...ul.children].map(l=>l._item);
       c.items.forEach((it,i)=>{
-        upd[`cats/${c.id}/items/${it.id}`]={t:it.t,d:it.d,o:i};
+        upd[`cats/${c.id}/items/${it.id}`]={t:it.t,d:it.d,o:i,...(it.p?{p:it.p}:{})};
         if(origin[it.id]!==c.id)upd[`cats/${origin[it.id]}/items/${it.id}`]=null;
       });
     });
@@ -212,6 +221,15 @@ function startDrag(e){
   addEventListener("pointermove",move);addEventListener("pointerup",end);addEventListener("pointercancel",end);
 }
 
+function updateBudget(){
+  const el=$("budget");
+  if(!onlyLeft||editing){el.hidden=true;return}
+  let sum=0,left=0,miss=0;
+  state.forEach(c=>c.items.forEach(i=>{if(!i.d){left++;if(i.p)sum+=i.p;else miss++}}));
+  el.hidden=false;
+  $("bsum").textContent=sum.toLocaleString("ko-KR")+"원";
+  $("bnote").textContent=left?(miss?`남은 ${left}개 중 금액 미입력 ${miss}개`:`남은 ${left}개 모두 입력됨`):"남은 품목이 없어요";
+}
 /* ---- 화면 ---- */
 function render(){
   document.body.classList.toggle("editing",editing);
@@ -258,6 +276,15 @@ function render(){
         cb.onchange=()=>{it.d=cb.checked;save();render();W(`cats/${c.id}/items/${it.id}/d`,it.d)};
         const lb=document.createElement("label");lb.htmlFor=id;lb.textContent=it.t;
         li.append(cb,lb);
+        if(onlyLeft){
+          const pi=document.createElement("input");pi.className="pr";pi.type="text";pi.inputMode="numeric";pi.placeholder="금액";pi.setAttribute("aria-label",it.t+" 금액");
+          if(it.p)pi.value=it.p.toLocaleString("ko-KR");
+          pi.onfocus=()=>{pi.value=it.p?String(it.p):"";pi.select()};
+          pi.oninput=()=>{it.p=Number(pi.value.replace(/\D/g,""))||0;updateBudget()};
+          pi.onblur=()=>{save();W(`cats/${c.id}/items/${it.id}/p`,it.p||null);pi.value=it.p?it.p.toLocaleString("ko-KR"):""};
+          pi.onkeydown=e=>{if(e.key==="Enter")pi.blur()};
+          li.append(pi);
+        }
       }
       ul.append(li);
     });
@@ -269,7 +296,7 @@ function render(){
       const inp=f.querySelector("input");
       const add=()=>{
         const v=inp.value.trim();if(!v)return;inp.value="";
-        const it={id:nid(),t:v,d:false};c.items.push(it);save();focusCat=ci;render();
+        const it={id:nid(),t:v,d:false,p:0};c.items.push(it);save();focusCat=ci;render();
         W(`cats/${c.id}/items/${it.id}`,{t:v,d:false,o:Date.now()});
       };
       f.querySelector("button").onclick=add;
@@ -279,7 +306,7 @@ function render(){
     g.append(card);
   });
   $("count").textContent=`${done} / ${total} 챙김 · 남은 품목 ${total-done}개`;
-  updateStatus();
+  updateStatus();updateBudget();
   $("fill").style.width=(total?done/total*100:0)+"%";
   $("filter").classList.toggle("on",onlyLeft);
   $("edit").classList.toggle("on",editing);
@@ -292,6 +319,12 @@ function render(){
 }
 $("edit").onclick=()=>{editing=!editing;render()};
 $("filter").onclick=()=>{onlyLeft=!onlyLeft;render()};
+$("checkall").onclick=()=>{
+  const u={};
+  state.forEach(c=>c.items.forEach(i=>{if(!i.d){i.d=true;u[`cats/${c.id}/items/${i.id}/d`]=true}}));
+  save();render();
+  try{if(root&&Object.keys(u).length)root.update(u)}catch(e){console.error(e)}
+};
 $("reset").onclick=()=>{
   const u={};
   state.forEach(c=>c.items.forEach(i=>{if(i.d){i.d=false;u[`cats/${c.id}/items/${i.id}/d`]=false}}));
